@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.2
+- Fix picomatch dependency issues
+
 ## 0.1.1 
 - Removed preview flag
 

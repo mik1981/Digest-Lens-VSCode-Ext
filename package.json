@@ -2,16 +2,38 @@
   "name": "digestlens",
   "displayName": "DigestLens — CRC & SHA & Hash Lens – Checksum Viewer",
   "description": "Instantly compute CRC, hashes and checksums in VS Code. Live Explorer badges, SHA, BLAKE3, xxHash, custom CRC.",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "publisher": "convergo-dev",
-  "extensionKind": ["workspace"],
+  "extensionKind": [
+    "workspace"
+  ],
   "engines": {
     "vscode": "^1.110.0"
   },
   "license": "MIT",
-  "categories": ["Programming Languages"],
+  "categories": [
+    "Programming Languages"
+  ],
   "icon": "resources/icon.png",
-  "keywords": ["crc", "crc8", "crc16", "crc32", "poly", "checksum", "hash", "fletcher", "blake", "xxhash", "file integrity", "embedded", "firmware", "bin", "debug", "binary", "binary tools"],
+  "keywords": [
+    "crc",
+    "crc8",
+    "crc16",
+    "crc32",
+    "poly",
+    "checksum",
+    "hash",
+    "fletcher",
+    "blake",
+    "xxhash",
+    "file integrity",
+    "embedded",
+    "firmware",
+    "bin",
+    "debug",
+    "binary",
+    "binary tools"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/mik1981/Digest-Lens-VSCode-Ext.git"
@@ -229,11 +251,17 @@
                         "maximum": 64
                       },
                       "poly": {
-                        "type": ["string", "number"],
+                        "type": [
+                          "string",
+                          "number"
+                        ],
                         "description": "Polinomio (es. 0x1021)"
                       },
                       "init": {
-                        "type": ["string", "number"],
+                        "type": [
+                          "string",
+                          "number"
+                        ],
                         "description": "Valore iniziale"
                       },
                       "refIn": {
@@ -243,10 +271,20 @@
                         "type": "boolean"
                       },
                       "xorOut": {
-                        "type": ["string", "number"]
+                        "type": [
+                          "string",
+                          "number"
+                        ]
                       }
                     },
-                    "required": ["width", "poly", "init", "refIn", "refOut", "xorOut"]
+                    "required": [
+                      "width",
+                      "poly",
+                      "init",
+                      "refIn",
+                      "refOut",
+                      "xorOut"
+                    ]
                   }
                 ]
               },
@@ -266,11 +304,17 @@
                 }
               },
               "initialValue": {
-                "type": ["string", "number"],
+                "type": [
+                  "string",
+                  "number"
+                ],
                 "description": "Valore iniziale personalizzato (opzionale) applicato solo ad algoritmi CRC/Fletcher. Se non specificato, viene usato il valore predefinito dell'algoritmo."
               }
             },
-            "required": ["pattern", "algorithm"]
+            "required": [
+              "pattern",
+              "algorithm"
+            ]
           },
           "default": []
         },
@@ -299,8 +343,8 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "esbuild ./src/extension.ts --bundle --outfile=./dist/extension.js --external:vscode --platform=node --format=cjs",
+    "watch": "esbuild ./src/extension.ts --bundle --outfile=./dist/extension.js --external:vscode --platform=node --format=cjs --watch",
     "package": "vsce package",
     "lint": "eslint ."
   },
@@ -312,8 +356,9 @@
     "@types/node": "^18.19.0",
     "@types/picomatch": "^4.0.2",
     "@types/vscode": "^1.85.0",
+    "esbuild": "^0.27.4",
     "eslint": "^8.56.0",
     "typescript": "^5.3.3",
-    "vsce": "^2.15.0"
+    "vsce": "^1.97.0"
   }
 }
