@@ -1,0 +1,320 @@
+{
+  "name": "digestlens",
+  "displayName": "DigestLens — CRC & SHA & Hash Lens – Checksum Viewer",
+  "description": "Instantly compute CRC, hashes and checksums in VS Code. Live Explorer badges, SHA, BLAKE3, xxHash, custom CRC.",
+  "version": "0.1.0",
+  "publisher": "convergo-dev",
+  "extensionKind": ["workspace"],
+  "engines": {
+    "vscode": "^1.110.0"
+  },
+  "license": "MIT",
+  "categories": ["Programming Languages"],
+  "icon": "resources/icon.png",
+  "keywords": ["crc", "crc8", "crc16", "crc32", "poly", "checksum", "hash", "fletcher", "blake", "xxhash", "file integrity", "embedded", "firmware", "bin", "debug", "binary", "binary tools"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mik1981/Digest-Lens-VSCode-Ext.git"
+  },
+  "homepage": "https://github.com/mik1981/Digest-Lens-VSCode-Ext#readme",
+  "bugs": {
+    "url": "https://github.com/mik1981/Digest-Lens-VSCode-Ext/issues"
+  },
+  "badges": [
+    {
+      "url": "https://img.shields.io/vscode-marketplace/d/convergo-dev.digestlens.svg?colorA=7388D6&colorB=737373",
+      "href": "https://marketplace.visualstudio.com/items?itemName=convergo-dev.digestlens",
+      "description": "Downloads"
+    },
+    {
+      "url": "https://img.shields.io/vscode-marketplace/i/convergo-dev.digestlens.svg?colorA=7388D6&colorB=737373",
+      "href": "https://marketplace.visualstudio.com/items?itemName=convergo-dev.digestlens",
+      "description": "Installs"
+    }
+  ],
+  "preview": true,
+  "galleryBanner": {
+    "color": "#2F74C0",
+    "theme": "dark"
+  },
+  "previewImages": [
+    {
+      "path": "media/screenshots/badge-example.png",
+      "caption": "CRC badge and tooltip in Explorer"
+    },
+    {
+      "path": "media/screenshots/tree-view.png",
+      "caption": "CRC Files tree view"
+    },
+    {
+      "path": "media/screenshots/inspector.png",
+      "caption": "CRC Inspector panel"
+    }
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "digestlens.refresh",
+        "title": "DigestLens: Refresh"
+      },
+      {
+        "command": "digestlens.copyDigest",
+        "title": "Copy CRC",
+        "icon": "$(copy)",
+        "tooltip": "Copy calculated checksum to clipboard"
+      },
+      {
+        "command": "digestlens.openFile",
+        "title": "Open CRC File"
+      },
+      {
+        "command": "digestlens.clearCache",
+        "title": "Clear Cache"
+      },
+      {
+        "command": "digestlens.cacheStats",
+        "title": "Cache Statistics"
+      },
+      {
+        "command": "digestlens.openGuide",
+        "title": "Guide",
+        "icon": "$(question)",
+        "tooltip": "Open Digest Lens Guide"
+      },
+      {
+        "command": "digestlens.openInspector",
+        "title": "CRC Inspector",
+        "icon": "$(search)",
+        "tooltip": "Open CRC Inspector"
+      },
+      {
+        "command": "digestlens.quickSetupRule",
+        "title": "Quick Setup CRC Rule",
+        "icon": "$(add)",
+        "tooltip": "Quickly set up a checksum rule for this file"
+      },
+      {
+        "command": "digestlens.openRuleInSettings",
+        "title": "Open CRC Rule in Settings",
+        "icon": "$(edit)",
+        "tooltip": "Open the matching CRC rule in workspace settings"
+      },
+      {
+        "command": "digestlens.deleteRule",
+        "title": "Delete CRC Rule",
+        "icon": "$(trash)",
+        "tooltip": "Delete the matching CRC rule from workspace settings"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "digestlens.copyDigest",
+          "when": "resourceScheme == 'file'",
+          "group": "navigation@100"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "digestlens.copyDigest",
+          "when": "view == digestlensTree && viewItem == crcFile",
+          "group": "inline@1"
+        },
+        {
+          "command": "digestlens.quickSetupRule",
+          "when": "view == digestlensTree && viewItem == crcFile",
+          "group": "inline@2"
+        },
+        {
+          "command": "digestlens.openRuleInSettings",
+          "when": "view == digestlensTree && viewItem == crcFile",
+          "group": "inline@3"
+        },
+        {
+          "command": "digestlens.deleteRule",
+          "when": "view == digestlensTree && viewItem == crcFile",
+          "group": "inline@4"
+        },
+        {
+          "command": "digestlens.copyDigest",
+          "when": "view == digestlensTree && viewItem == crcSelection",
+          "group": "inline@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "digestlens.quickSetupRule",
+          "when": "view == digestlensTree",
+          "group": "navigation"
+        },
+        {
+          "command": "digestlens.openGuide",
+          "when": "view == digestlensTree",
+          "group": "navigation",
+          "icon": "$(question)"
+        },
+        {
+          "command": "digestlens.openInspector",
+          "when": "view == digestlensTree",
+          "group": "navigation"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "digestlensTree",
+          "name": "DIGEST FILES",
+          "icon": "$(file)"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "DigestLens",
+      "properties": {
+        "digestlens.rules": {
+          "type": "array",
+          "description": "Regole: associa wildcard a algoritmo di checksum (predefiniti o custom) e opzioni di visualizzazione.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pattern": {
+                "type": "string",
+                "description": "Glob pattern (es. **/*.{bin,hex}) relativo al workspace. Usa il valore speciale \"onselection\" per calcolare il checksum sul testo selezionato in realtime nell'editor (attivato da ≥ 2 caratteri selezionati)."
+              },
+              "algorithm": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "CRC-32",
+                      "CRC-32C",
+                      "CRC-16/IBM",
+                      "CRC-16/MODBUS",
+                      "CRC-16/CCITT-FALSE",
+                      "CRC-8",
+                      "CRC-8-CCITT",
+                      "Fletcher-8",
+                      "Fletcher-16",
+                      "MD5",
+                      "SHA1",
+                      "SHA256",
+                      "SHA512",
+                      "BLAKE2b-512",
+                      "BLAKE2s-256",
+                      "BLAKE3",
+                      "xxHash32",
+                      "xxHash64"
+                    ],
+                    "description": "Algoritmo predefinito:\n- CRC-32 (polinomio: 0x04C11DB7, init: 0xFFFFFFFF, refIn: true, refOut: true, xorOut: 0xFFFFFFFF)\n- CRC-32C (polinomio: 0x1EDC6F41, init: 0xFFFFFFFF, refIn: true, refOut: true, xorOut: 0xFFFFFFFF)\n- CRC-16/IBM (polinomio: 0x8005, init: 0x0000, refIn: true, refOut: true, xorOut: 0x0000)\n- CRC-16/MODBUS (polinomio: 0x8005, init: 0xFFFF, refIn: true, refOut: true, xorOut: 0x0000)\n- CRC-16/CCITT-FALSE (polinomio: 0x1021, init: 0xFFFF, refIn: false, refOut: false, xorOut: 0x0000)\n- CRC-8 (polinomio: 0x07, init: 0x00, refIn: false, refOut: false, xorOut: 0x00)\n- CRC-8-CCITT / CRC-8/CCITT (polinomio: 0x07, init: 0x00, refIn: false, refOut: false, xorOut: 0x55)\n- Fletcher-8 (sum1/sum2 modulo 15, output 8 bit)\n- Fletcher-16 (sum1/sum2 modulo 255, output 16 bit)\n- MD5 (128 bit)\n- SHA1 (160 bit)\n- SHA256 (256 bit)\n- SHA512 (512 bit)\n- BLAKE2b-512 (512 bit)\n- BLAKE2s-256 (256 bit)\n- BLAKE3 (256 bit)\n- xxHash32 (32 bit)\n- xxHash64 (64 bit)"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "Nome opzionale"
+                      },
+                      "width": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 64
+                      },
+                      "poly": {
+                        "type": ["string", "number"],
+                        "description": "Polinomio (es. 0x1021)"
+                      },
+                      "init": {
+                        "type": ["string", "number"],
+                        "description": "Valore iniziale"
+                      },
+                      "refIn": {
+                        "type": "boolean"
+                      },
+                      "refOut": {
+                        "type": "boolean"
+                      },
+                      "xorOut": {
+                        "type": ["string", "number"]
+                      }
+                    },
+                    "required": ["width", "poly", "init", "refIn", "refOut", "xorOut"]
+                  }
+                ]
+              },
+              "display": {
+                "type": "object",
+                "properties": {
+                  "badgeLength": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 4,
+                    "default": 2
+                  },
+                  "uppercase": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                }
+              },
+              "initialValue": {
+                "type": ["string", "number"],
+                "description": "Valore iniziale personalizzato (opzionale) applicato solo ad algoritmi CRC/Fletcher. Se non specificato, viene usato il valore predefinito dell'algoritmo."
+              }
+            },
+            "required": ["pattern", "algorithm"]
+          },
+          "default": []
+        },
+        "digestlens.cache": {
+          "type": "object",
+          "description": "Configurazione della cache locale per i calcoli checksum.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Abilita o disabilita la cache locale."
+            },
+            "path": {
+              "type": "string",
+              "default": ".vscode/digestlens.json",
+              "description": "Percorso relativo alla workspace root per il file di cache."
+            }
+          },
+          "default": {
+            "enabled": true,
+            "path": ".vscode/digestlens.json"
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "hash-wasm": "^4.12.0",
+    "picomatch": "^2.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/picomatch": "^4.0.2",
+    "@types/vscode": "^1.85.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3",
+    "vsce": "^2.15.0"
+  }
+}

@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <!-- CSP -->
+  <meta http-equiv="Content-Security-Policy"
+    content="
+      default-src 'none';
+      img-src {{cspSource}} https: data:;
+      style-src {{cspSource}} 'unsafe-inline' https://cdn.jsdelivr.net;
+      script-src 'nonce-{{nonce}}' https://cdn.jsdelivr.net;
+    "
+  >
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DigestLens Guide</title>
+
+  <!-- Highlight -->
+  <link rel="stylesheet" href="{{highlightCss}}">
+
+  <style>
+    /* ---------------------------------------
+       VS Code native theme variables
+    --------------------------------------- */
+
+    body {
+      background-color: var(--vscode-editor-background);
+      color: var(--vscode-editor-foreground);
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
+      margin: 0;
+      padding: 0;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    header {
+      margin-bottom: 32px;
+      border-bottom: 2px solid var(--vscode-focusBorder);
+      padding-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0 0 8px 0;
+      color: var(--vscode-textLink-foreground);
+    }
+
+    .subtitle {
+      opacity: 0.8;
+    }
+
+    /* ---------------------------------------
+       TOC
+    --------------------------------------- */
+
+    .toc {
+      background: var(--vscode-editorWidget-background);
+      border: 1px solid var(--vscode-editorWidget-border);
+      border-radius: 6px;
+      padding: 16px;
+      margin: 24px 0;
+    }
+
+    .toc a {
+      color: var(--vscode-textLink-foreground);
+      text-decoration: none;
+      display: block;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    .toc a:hover {
+      background: var(--vscode-list-hoverBackground);
+    }
+
+    /* ---------------------------------------
+       CONTENT
+    --------------------------------------- */
+
+    .content {
+      background: var(--vscode-editorWidget-background);
+      border: 1px solid var(--vscode-editorWidget-border);
+      border-radius: 6px;
+      padding: 24px;
+    }
+
+    .inspector-shell {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+    }
+
+    .inspector-card {
+      background: var(--vscode-editor-background);
+      border: 1px solid var(--vscode-editorWidget-border);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .inspector-card.full {
+      grid-column: 1 / -1;
+    }
+
+    .inspector-card h4 {
+      margin: 0 0 8px 0;
+      color: var(--vscode-textLink-foreground);
+    }
+
+    .inspector-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .inspector-controls .full {
+      grid-column: 1 / -1;
+    }
+
+    .inspector-controls label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+    }
+
+    .inspector-controls input,
+    .inspector-controls select,
+    .inspector-controls textarea {
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-family: var(--vscode-editor-font-family);
+    }
+
+    .inspector-controls textarea {
+      min-height: 74px;
+      resize: vertical;
+    }
+
+    .inspector-kv {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      row-gap: 6px;
+      column-gap: 8px;
+      font-size: 12px;
+    }
+
+    .inspector-kv div:nth-child(odd) {
+      opacity: 0.8;
+    }
+
+    .inspector-mono {
+      font-family: var(--vscode-editor-font-family);
+      word-break: break-word;
+    }
+
+    .inspector-scroll {
+      max-height: 320px;
+      overflow: auto;
+    }
+
+    .inspector-scroll table {
+      margin: 0;
+      font-size: 12px;
+    }
+
+    .inspector-reflect-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+      margin-top: 8px;
+      font-size: 12px;
+    }
+
+    .inspector-reflect-row code {
+      display: block;
+      white-space: pre-wrap;
+    }
+
+    h2 {
+      border-bottom: 1px solid var(--vscode-editorWidget-border);
+      padding-bottom: 6px;
+      color: var(--vscode-textLink-foreground);
+    }
+
+    h3 {
+      color: var(--vscode-textPreformat-foreground);
+    }
+
+    p {
+      max-width: 80ch;
+    }
+
+    /* ---------------------------------------
+       TABLES
+    --------------------------------------- */
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+    }
+
+    th, td {
+      border: 1px solid var(--vscode-editorWidget-border);
+      padding: 10px;
+    }
+
+    th {
+      background: var(--vscode-editorHoverWidget-background);
+    }
+
+    /* ---------------------------------------
+       CODE (IMPORTANT)
+    --------------------------------------- */
+
+    pre {
+      background: var(--vscode-editor-background);
+      border: 1px solid var(--vscode-editorWidget-border);
+      padding: 12px;
+      border-radius: 6px;
+      overflow-x: auto;
+    }
+
+    code {
+      font-family: var(--vscode-editor-font-family);
+      font-size: 0.9em;
+    }
+
+    /* Inline code */
+    p code {
+      background: var(--vscode-textBlockQuote-background);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* ---------------------------------------
+       DETAILS
+    --------------------------------------- */
+
+    details {
+      border: 1px solid var(--vscode-editorWidget-border);
+      border-radius: 6px;
+      padding: 10px;
+      margin: 16px 0;
+    }
+
+    summary {
+      cursor: pointer;
+      color: var(--vscode-textLink-foreground);
+    }
+
+    /* ---------------------------------------
+       FOOTER
+    --------------------------------------- */
+
+    .footer {
+      margin-top: 32px;
+      padding-top: 16px;
+      border-top: 1px solid var(--vscode-editorWidget-border);
+      opacity: 0.7;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div id="content" class="content"></div>
+
+    <div class="footer">
+      DigestLens • <a href="#">Report Issues</a>
+    </div>
+  </div>
+
+  <script nonce="{{nonce}}" src="{{markedJs}}"></script>
+  <script nonce="{{nonce}}" src="{{highlightJs}}"></script>
+  <script nonce="{{nonce}}" src="{{mainJs}}"></script>
+
+  <script>
+    // IMPORTANT: Highlight attivazione corretta
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block);
+      });
+    });
+  </script>
+</body>
+</html>
