@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.1.2
+## 0.1.4
+- General stability improvements and dependency updates
+- Reduced system intrusiveness when no rules are present: no cache file or .vscode folder is created if there are no files to checksum.
+
+## 0.1.2/3
 - Fix picomatch dependency issues
 
 ## 0.1.1 

@@ -1,8 +1,8 @@
 {
   "name": "digestlens",
-  "displayName": "DigestLens — CRC & SHA & Hash Lens – Checksum Viewer",
+  "displayName": "DigestLens - CRC & SHA & Hash Lens – Checksum Viewer",
   "description": "Instantly compute CRC, hashes and checksums in VS Code. Live Explorer badges, SHA, BLAKE3, xxHash, custom CRC.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "convergo-dev",
   "extensionKind": [
     "workspace"

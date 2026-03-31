@@ -59,15 +59,13 @@ All rules are configured in your workspace `.vscode/settings.json`:
 | **xxHash32** | 32 | Non-cryptographic digest | Fast checks and indexing |
 | **xxHash64** | 64 | Non-cryptographic digest | Fast checks and indexing |
 
-## 3. CRC Inspector Avanzato
+## 3. CRC Inspector Advanced
 
 Use the integrated inspector to debug CRC internals like DevTools:
 - Step-by-step byte processing (state before/after, table index, table value)
 - Polynomial expansion (for example `0x1021 -> x^16 + x^12 + x^5 + 1`)
 - Pre-generated CRC lookup table
 - Real-time bit reflection preview
-
-<div id="crc-inspector-anchor"></div>
 
 ## 4. Manual/Custom CRC Configuration
 
@@ -153,4 +151,4 @@ Cache is enabled by default (`.vscode/digestlens.json`):
 **Support**: Report issues via GitHub.
 
 ---
-*DigestLens v0.1.0*
+*DigestLens v0.1.4*

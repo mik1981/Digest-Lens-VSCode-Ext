@@ -95,9 +95,14 @@ export function activate(context: vscode.ExtensionContext) {
     try { return await fs.promises.stat(p); } catch { return undefined; }
   }
 
-  async function initializeCacheManager() {
-    if (!cacheConfig.enabled) {
-      output.appendLine('[cache] Cache disabilitata nella configurazione');
+async function initializeCacheManager() {
+    if (!cacheConfig.enabled || rules.length === 0) {
+      if (!cacheConfig.enabled) {
+        output.appendLine('[cache] Cache disabilitata nella configurazione');
+      } else {
+        output.appendLine('[cache] Nessuna regola definita, cache non inizializzata');
+      }
+      cacheManager = null;
       return;
     }
 
@@ -112,10 +117,6 @@ export function activate(context: vscode.ExtensionContext) {
       cacheManager = new CacheManager(cacheFilePath);
       await cacheManager.initialize(root.uri.fsPath);
       output.appendLine(`[cache] Cache inizializzata: ${cacheFilePath}`);
-      
-      // Carichiamo le entry esistenti nella cache in memoria
-      const stats = cacheManager.getStats();
-      output.appendLine(`[cache] Entry caricate: ${stats.totalEntries}`);
     } catch (error) {
       output.appendLine(`[cache] Errore inizializzazione cache: ${error}`);
       cacheManager = null;
@@ -934,6 +935,12 @@ async getChildren(element?: CrcTreeItem): Promise<CrcTreeItem[]> {
     const found = findRuleIndexForUri(uri);
     if (!found) {
       vscode.window.showWarningMessage('Nessuna regola locale trovata per il file selezionato.');
+    }
+
+    const workspaceRules = getWorkspaceRules();
+    if (workspaceRules.length === 0) {
+      vscode.window.showWarningMessage('Nessuna regola definita. Crea prima una regola CRC.');
+      return;
     }
 
     const root = vscode.workspace.workspaceFolders?.[0];
