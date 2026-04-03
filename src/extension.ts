@@ -8,6 +8,32 @@ import { EffectiveRule, loadRules, loadCacheConfig, validateRules, RuleConfig, A
 import { CacheManager, CacheEntry } from './cache';
 import { getGuideContent, createGuidePanel, createInspectorPanel } from './guidePreview';
 
+function expandGlobForFindFiles(globStr: string): string[] {
+  // Handle brace expansion like {c,h} → [*.c, *.h]
+  // Simple parser for common VSCode user patterns; supports one brace level
+  const patterns: string[] = [];
+  
+  // Detect braces
+  const braceMatch = globStr.match(/(\{([^}]+)\})/);
+  if (braceMatch) {
+    const prefix = globStr.slice(0, braceMatch.index);
+    const suffix = globStr.slice(braceMatch.index! + braceMatch[0].length);
+    const exts = braceMatch[2].split(',').map(s => s.trim()).filter(Boolean);
+    
+    for (const ext of exts) {
+      const expanded = prefix + ext + suffix;
+      // Recursive for nested braces (rare)
+      patterns.push(...expandGlobForFindFiles(expanded));
+    }
+  } else {
+    // No braces, return as-is (ensure ** for recursive search)
+    const recursiveGlob = globStr.includes('**') ? globStr : `**/${globStr}`;
+    patterns.push(recursiveGlob);
+  }
+  
+  return patterns.filter(p => p.trim());
+}
+
 
 type CrcEntry = {
   algoName: string;
@@ -49,12 +75,20 @@ interface CrcClipboardItem extends vscode.TreeItem {
   clipboardEntry: ClipboardEntry;
 }
 
-type CrcTreeItem = CrcFileItem | CrcSelectionItem | CrcClipboardItem;
+/** Item della tree che rappresenta una cartella virtuale (raggruppamento smart). */
+interface FolderItem extends vscode.TreeItem {
+  pathSegments: string[];  // e.g., ['src', 'utils']
+  fullPath: string;        // 'src/utils'
+  children: (FolderItem | CrcFileItem)[];
+  fileCount: number;       // numero files nelle foglie
+}
+
+type CrcTreeItem = CrcFileItem | CrcSelectionItem | CrcClipboardItem | FolderItem;
 
 export function activate(context: vscode.ExtensionContext) {
-  const output = vscode.window.createOutputChannel('DigestLens');
+  const output = vscode.window.createOutputChannel('DigestLens Output');
   context.subscriptions.push(output);
-  output.appendLine('DigestLens attivato');
+  output.appendLine('DigestLens activated');
 
   const cache = new Map<string, CrcEntry>(); // key = uri.fsPath + '|' + algoName
 /** Risultati live della selezione — key = algoName */
@@ -66,9 +100,10 @@ export function activate(context: vscode.ExtensionContext) {
   const CLIPBOARD_POLL_INTERVAL = 2000; // 2 secondi
   let rules: EffectiveRule[] = loadRules(output);
   let cacheManager: CacheManager | null = null;
-  let cacheConfig = loadCacheConfig(output);
+let cacheConfig = loadCacheConfig(output);
+  let treeViewMode = vscode.workspace.getConfiguration('digestlens').get<'tree' | 'flat'>('treeViewMode', 'tree');
   
-  // Diagnostic collector per segnalare errori di configurazione
+// Diagnostic collection for reporting configuration errors
   const diagnosticCollection = vscode.languages.createDiagnosticCollection('Digestlens');
   context.subscriptions.push(diagnosticCollection);
 
@@ -230,7 +265,8 @@ async function initializeCacheManager() {
       if (r.isOnSelection) { continue; } // le regole onselection non matchano file
       const isMatch = picomatch.isMatch(relPosix, r.patternStr, {
         dot: true,
-        nocase: process.platform === 'win32'
+        nocase: process.platform === 'win32',
+        matchBase: true
       });
       if (isMatch) {
         output.appendLine(`[pickRulesFor] MATCH: ${relPosix} ~ ${r.patternStr} ~ ${r.params.name}`);
@@ -350,24 +386,30 @@ async function initializeCacheManager() {
     }, 30);
   }
 
-  async function warmupVisibleFiles() {
+async function warmupVisibleFiles() {
     const root = vscode.workspace.workspaceFolders?.[0]?.uri;
     if (!root) return;
     const LIMIT = 200;
     for (const r of rules) {
       if (r.isOnSelection) { continue; }
       try {
-        const uris = await vscode.workspace.findFiles(
-          r.pattern as vscode.GlobPattern,
-          '**/node_modules/**',
-          LIMIT
-        );
+        const expanded = expandGlobForFindFiles(r.patternStr);
+        let uris: vscode.Uri[] = [];
+        for (const exp of expanded) {
+          output.appendLine(`[warmup] Espansione ${r.patternStr} → ${exp}`);
+          const found = await vscode.workspace.findFiles(
+            exp as vscode.GlobPattern,
+            '**/node_modules/**',
+            LIMIT
+          );
+          uris = uris.concat(found);
+        }
         for (const u of uris) {
           await ensureComputed(u);
         }
       } catch (e) {
         output.appendLine(
-          `[warmup][ERROR] ${String(r.pattern)} → ${
+          `[warmup][ERROR] ${r.patternStr} → ${
             e instanceof Error ? e.message : String(e)
           }`
         );
@@ -397,11 +439,16 @@ async function initializeCacheManager() {
       const affectedFiles: string[] = [];
       for (const rule of rules) {
         try {
-          const uris = await vscode.workspace.findFiles(
-            rule.pattern as vscode.GlobPattern,
-            '**/node_modules/**',
-            1000 // Limite alto per essere sicuri di prendere tutti i file interessati
-          );
+          const expanded = expandGlobForFindFiles(rule.patternStr);
+          let uris: vscode.Uri[] = [];
+          for (const exp of expanded) {
+            const found = await vscode.workspace.findFiles(
+              exp as vscode.GlobPattern,
+              '**/node_modules/**',
+              1000
+            );
+            uris = uris.concat(found);
+          }
           for (const uri of uris) {
             const relPath = vscode.workspace.asRelativePath(uri, false);
             if (relPath) {
@@ -409,7 +456,7 @@ async function initializeCacheManager() {
             }
           }
         } catch (e) {
-          output.appendLine(`[invalidateCacheForRules][ERROR] ${String(rule.pattern)} → ${String(e)}`);
+          output.appendLine(`[invalidateCacheForRules][ERROR] ${rule.patternStr} → ${String(e)}`);
         }
       }
 
@@ -528,8 +575,8 @@ async function computeSelectionCrc(selectedText: string): Promise<void> {
 }
 
 async function computeClipboardCrc(): Promise<void> {
-  const onSelRules = getOnSelectionRules();
-  if (onSelRules.length === 0) { return; }
+  const onClipboardRules = rules.filter(r => r.isOnClipboard);
+  if (onClipboardRules.length === 0) { return; }
 
   let clipboardText = '';
   try {
@@ -541,7 +588,7 @@ async function computeClipboardCrc(): Promise<void> {
 
   if (clipboardText.length === 0) {
     output.appendLine('[clipboard] Appunti vuoti → "--"');
-    for (const rule of onSelRules) {
+    for (const rule of onClipboardRules) {
       const algoName = rule.params.name ?? `CRC-${rule.params.width}`;
       clipboardResults.set(algoName, { algoName, fullHex: '--', width: rule.params.width });
     }
@@ -550,7 +597,7 @@ async function computeClipboardCrc(): Promise<void> {
   }
 
   const buf = Buffer.from(clipboardText, 'utf8');
-  for (const rule of onSelRules) {
+  for (const rule of onClipboardRules) {
     const algoName = rule.params.name ?? `CRC-${rule.params.width}`;
     try {
       const crc = await computeBufferCRC(buf, rule.params);
@@ -577,7 +624,8 @@ class CrcTreeProvider implements vscode.TreeDataProvider<CrcTreeItem>, vscode.Di
     private readonly ensureComputedFn: (uri: vscode.Uri) => Promise<Array<{ entry: CrcEntry; rule: EffectiveRule }> | undefined>,
     private readonly getSelectionResults: () => Map<string, SelectionEntry>,
     private readonly getClipboardResults: () => Map<string, ClipboardEntry>, // NEW
-    private readonly out: vscode.OutputChannel
+    private readonly out: vscode.OutputChannel,
+    private readonly getTreeViewMode: () => 'tree' | 'flat'
   ) {}
 
     refresh(): void {
@@ -589,6 +637,21 @@ class CrcTreeProvider implements vscode.TreeDataProvider<CrcTreeItem>, vscode.Di
     }
 
     getTreeItem(element: CrcTreeItem): vscode.TreeItem {
+      // ── NEW: FolderItem support ─────────────────────────────────────────
+      if ('pathSegments' in element && 'fileCount' in element) {
+        const folder = element as FolderItem;
+        return {
+          label: folder.label,
+          description: `(${folder.fileCount} items)`,
+          tooltip: `${folder.fullPath || 'Root'} (${folder.fileCount} files)`,
+          collapsibleState: folder.children.length > 0 
+            ? vscode.TreeItemCollapsibleState.Collapsed 
+            : vscode.TreeItemCollapsibleState.None,
+          iconPath: new vscode.ThemeIcon('folder'),
+          contextValue: folder.pathSegments.length === 0 ? 'crcRootFolder' : 'crcFolder'
+        };
+      }
+
       // ── Item "on clipboard" ──────────────────────────────────────────────
       if ('isClipboard' in element && element.isClipboard) {
         const ce = element.clipboardEntry;
@@ -642,34 +705,38 @@ class CrcTreeProvider implements vscode.TreeDataProvider<CrcTreeItem>, vscode.Di
       };
     }
 
-async getChildren(element?: CrcTreeItem): Promise<CrcTreeItem[]> {
-      if (element) return [];
+    async getChildren(element?: CrcTreeItem): Promise<CrcTreeItem[]> {
+      // ── Se è un FolderItem, restituisci i suoi figli ──────────────────
+      if (element && 'pathSegments' in element && 'children' in element) {
+        return (element as FolderItem).children;
+      }
 
       const root = vscode.workspace.workspaceFolders?.[0]?.uri;
       if (!root) return [];
 
       const items: CrcTreeItem[] = [];
 
-      // ── Item "on clipboard" ─────────────────────────────────────────────
-      const onSelRules = this.getRules().filter(r => r.isOnSelection);
-      for (const rule of onSelRules) {
-        const algoName = rule.params.name ?? `CRC-${rule.params.width}`;
-        const clipEntry = this.getClipboardResults().get(algoName)
-          ?? { algoName, fullHex: '--', width: rule.params.width };
-        const clipItem: CrcClipboardItem = { isClipboard: true, clipboardEntry: clipEntry };
-        items.push(clipItem);
-      }
+  // ── Item "on clipboard" ─────────────────────────────────────────────
+  const onClipboardRules = this.getRules().filter(r => r.isOnClipboard);
+  for (const rule of onClipboardRules) {
+    const algoName = rule.params.name ?? `CRC-${rule.params.width}`;
+    const clipEntry = this.getClipboardResults().get(algoName)
+      ?? { algoName, fullHex: '--', width: rule.params.width };
+    const clipItem: CrcClipboardItem = { isClipboard: true, clipboardEntry: clipEntry };
+    items.push(clipItem);
+  }
 
-      // ── Item "on selection" ─────────────────────────────────────────────
-      for (const rule of onSelRules) {
-        const algoName = rule.params.name ?? `CRC-${rule.params.width}`;
-        const selEntry = this.getSelectionResults().get(algoName)
-          ?? { algoName, fullHex: null, width: rule.params.width };
-        const selItem: CrcSelectionItem = { isSelection: true, selectionEntry: selEntry };
-        items.push(selItem);
-      }
+  // ── Item "on selection" ─────────────────────────────────────────────
+  const onSelectionRules = this.getRules().filter(r => r.isOnSelection);
+  for (const rule of onSelectionRules) {
+    const algoName = rule.params.name ?? `CRC-${rule.params.width}`;
+    const selEntry = this.getSelectionResults().get(algoName)
+      ?? { algoName, fullHex: null, width: rule.params.width };
+    const selItem: CrcSelectionItem = { isSelection: true, selectionEntry: selEntry };
+    items.push(selItem);
+  }
 
-      // ── Item file standard ───────────────────────────────────────────────
+      // ── Item file standard con raggruppamento smart ─────────────────────
       const LIMIT = 500;
 
       const seen = new Set<string>();
@@ -679,11 +746,22 @@ async getChildren(element?: CrcTreeItem): Promise<CrcTreeItem[]> {
       for (const rule of this.getRules()) {
         if (rule.isOnSelection) { continue; }
         try {
-          const uris = await vscode.workspace.findFiles(
-            rule.pattern as vscode.GlobPattern,
-            '**/node_modules/**',
-            LIMIT
-          );
+          // Usa patternStr originale e helper per espansione braces
+          const patternStr = rule.patternStr;
+          this.out.appendLine(`[tree] findFiles con pattern: ${patternStr}`);
+          
+          const expandedPatterns = expandGlobForFindFiles(patternStr);
+          let uris: vscode.Uri[] = [];
+          for (const expPattern of expandedPatterns) {
+            this.out.appendLine(`[tree] Espansione → ${expPattern}`);
+            const found = await vscode.workspace.findFiles(
+              expPattern as vscode.GlobPattern,
+              '**/node_modules/**',
+              LIMIT
+            );
+            uris = uris.concat(found);
+          }
+          this.out.appendLine(`[tree] findFiles ha trovato ${uris.length} file (da ${expandedPatterns.length} patterns)`);
 
           for (const uri of uris) {
             if (!seen.has(uri.fsPath)) {
@@ -696,26 +774,213 @@ async getChildren(element?: CrcTreeItem): Promise<CrcTreeItem[]> {
         }
       }
 
-      // 🔹 ora processi ogni file UNA sola volta
-      const fileItems: CrcFileItem[] = [];
+      // 🔹 ora processi ogni file UNA sola volta e raggruppa per cartella
+      this.out.appendLine(`[tree] Trovati ${allUris.length} URI totali`);
+      
+      interface FileGroup {
+        uri: vscode.Uri;
+        basename: string;
+        posixPath: string;
+        items: CrcFileItem[];
+      }
+
+      const fileGroups: FileGroup[] = [];
       for (const uri of allUris) {
         const info = await this.ensureComputedFn(uri);
-        if (info) {
-          for (const result of info) {
-            const treeItem: CrcFileItem = {
-              uri,
-              entry: result.entry
-            } as CrcFileItem;
+        if (!info || info.length === 0) {
+          this.out.appendLine(`[tree] File ${uri.fsPath} non ha risultati`);
+          continue;
+        }
 
-            treeItem.label = path.basename(uri.fsPath);
-            treeItem.description = `${result.entry.algoName} 0x${result.entry.fullHex}`;
-            fileItems.push(treeItem);
+        const relPath = vscode.workspace.asRelativePath(uri, false);
+        if (!relPath) continue;
+
+        const posixPath = relPath.replace(/\\/g, '/');
+        const basename = path.basename(posixPath);
+
+        const fileItems: CrcFileItem[] = [];
+        for (const result of info) {
+          const fileItem: CrcFileItem = {
+            uri,
+            entry: result.entry
+          } as CrcFileItem;
+
+          fileItem.label = basename;
+          fileItem.description = `${result.entry.algoName} 0x${result.entry.fullHex}`;
+          fileItems.push(fileItem);
+        }
+
+        fileGroups.push({ uri, basename, posixPath, items: fileItems });
+        this.out.appendLine(`[tree] Aggiunto gruppo: ${posixPath} (${fileItems.length} items)`);
+      }
+      
+      this.out.appendLine(`[tree] Creati ${fileGroups.length} gruppi di file`);
+
+      // 🔹 Modalità flat: aggiungi tutti i file direttamente senza cartelle
+      if (this.getTreeViewMode() === 'flat') {
+        this.out.appendLine('[tree] Modalità flat: lista piatta di file');
+        for (const group of fileGroups) {
+          for (const item of group.items) {
+            // Aggiungi il percorso relativo come description per distinguere file con stesso nome
+            const fileItem: CrcFileItem = {
+              uri: item.uri,
+              entry: item.entry
+            } as CrcFileItem;
+            fileItem.label = group.basename;
+            fileItem.description = `${item.entry.algoName} 0x${item.entry.fullHex} — ${group.posixPath}`;
+            items.push(fileItem);
           }
+        }
+        
+        // Ordina alfabeticamente per label
+        items.sort((a, b) => {
+          const aLabel = (a.label as string) || '';
+          const bLabel = (b.label as string) || '';
+          return aLabel.localeCompare(bLabel);
+        });
+
+        if (items.length === 0) {
+          // Messaggio diagnostico se non ci sono file
+          const diagItem: CrcFileItem = {
+            uri: root,
+            entry: {
+              algoName: 'Info',
+              fullHex: 'Nessun file trovato',
+              mtimeMs: 0,
+              size: 0,
+              width: 0
+            }
+          } as CrcFileItem;
+          diagItem.label = 'Nessun file corrispondente alle regole';
+          diagItem.description = 'Controlla la configurazione';
+          items.push(diagItem);
+        }
+
+        return items;
+      }
+
+      // 🔹 Modalità tree: Costruisci albero gerarchico con raggruppamento smart
+      let totalChecksums = 0;
+      for (const group of fileGroups) {
+        totalChecksums += group.items.length;
+      }
+      
+      const rootFolder: FolderItem = {
+        pathSegments: [],
+        fullPath: '',
+        children: [],
+        fileCount: totalChecksums,  // Totale checksum calcolati (un file può averne più di uno)
+        label: 'Files',
+        collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+        contextValue: 'crcRootFolder'
+      } as FolderItem;
+
+      for (const group of fileGroups) {
+        const segments = group.posixPath.split('/').filter(Boolean);
+        let current: FolderItem = rootFolder;
+
+        // Naviga/crea la struttura di cartelle
+        for (let i = 0; i < segments.length - 1; i++) {
+          const seg = segments[i];
+          let folder = current.children.find((child): child is FolderItem =>
+            'pathSegments' in child && child.pathSegments[child.pathSegments.length - 1] === seg
+          );
+
+          if (!folder) {
+            folder = {
+              pathSegments: [...current.pathSegments, seg],
+              fullPath: current.fullPath ? `${current.fullPath}/${seg}` : seg,
+              children: [],
+              fileCount: 0,
+              label: seg,
+              collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+              contextValue: 'crcFolder'
+            } as FolderItem;
+            current.children.push(folder);
+          }
+          current = folder;
+        }
+
+        // Aggiungi i file alla cartella foglia
+        for (const item of group.items) {
+          current.children.push(item);
+          current.fileCount += 1;
         }
       }
 
-      fileItems.sort((a, b) => a.uri.fsPath.localeCompare(b.uri.fsPath));
-      return [...items, ...fileItems];
+      // 🔹 Raggruppamento smart: unisci catene di cartelle con un solo figlio
+      function smartMerge(folder: FolderItem): void {
+        const folders = folder.children.filter((c): c is FolderItem => 'pathSegments' in c);
+        const files = folder.children.filter((c): c is CrcFileItem => 'uri' in c);
+
+        // Se c'è una sola cartella e nessun file, unisci con il figlio
+        while (folders.length === 1 && files.length === 0) {
+          const singleFolder = folders[0];
+          // Unisci le etichette
+          folder.label = `${folder.label}/${singleFolder.label}`;
+          folder.pathSegments = singleFolder.pathSegments;
+          folder.fullPath = singleFolder.fullPath;
+          folder.children = singleFolder.children;
+          folder.fileCount = singleFolder.fileCount;
+
+          // Aggiorna le liste
+          const newFolders = folder.children.filter((c): c is FolderItem => 'pathSegments' in c);
+          const newFiles = folder.children.filter((c): c is CrcFileItem => 'uri' in c);
+          folders.length = 0;
+          folders.push(...newFolders);
+          files.length = 0;
+          files.push(...newFiles);
+        }
+
+        // Ricorsione sui figli
+        for (const child of folders) {
+          smartMerge(child);
+        }
+      }
+
+      smartMerge(rootFolder);
+
+      // 🔹 Ordina ricorsivamente
+      function sortRecursive(folder: FolderItem): void {
+        folder.children.sort((a, b) => {
+          const aIsFolder = 'pathSegments' in a;
+          const bIsFolder = 'pathSegments' in b;
+          if (aIsFolder && !bIsFolder) return -1;
+          if (!aIsFolder && bIsFolder) return 1;
+          const aLabel = (a.label as string) || '';
+          const bLabel = (b.label as string) || '';
+          return aLabel.localeCompare(bLabel);
+        });
+
+        const childFolders = folder.children.filter((c): c is FolderItem => 'pathSegments' in c);
+        for (const child of childFolders) {
+          sortRecursive(child);
+        }
+      }
+
+      sortRecursive(rootFolder);
+
+      // Aggiungi la root folder sempre (anche se vuota per diagnostica)
+      if (rootFolder.children.length > 0) {
+        items.push(rootFolder);
+      } else {
+        // Messaggio diagnostico se non ci sono file
+        const diagItem: CrcFileItem = {
+          uri: root,
+          entry: {
+            algoName: 'Info',
+            fullHex: 'Nessun file trovato',
+            mtimeMs: 0,
+            size: 0,
+            width: 0
+          }
+        } as CrcFileItem;
+        diagItem.label = 'Nessun file corrispondente alle regole';
+        diagItem.description = 'Controlla la configurazione';
+        items.push(diagItem);
+      }
+
+      return items;
     }
   }
 
@@ -725,7 +990,8 @@ async getChildren(element?: CrcTreeItem): Promise<CrcTreeItem[]> {
     ensureComputed,
     () => selectionResults,
     () => clipboardResults,
-    output
+    output,
+    () => treeViewMode
   );
   const treeView = vscode.window.createTreeView('digestlensTree', { treeDataProvider: treeProvider });
   context.subscriptions.push(treeView, treeProvider);
@@ -1180,6 +1446,11 @@ async getChildren(element?: CrcTreeItem): Promise<CrcTreeItem[]> {
       cacheConfig = loadCacheConfig(output);
       initializeCacheManager();
       reportConfigurationErrors();
+    }
+    if (e.affectsConfiguration('digestlens.treeViewMode')) {
+      output.appendLine('[config] Cambiamento modalità tree view.');
+      treeViewMode = vscode.workspace.getConfiguration('digestlens').get<'tree' | 'flat'>('treeViewMode', 'tree');
+      treeProvider.refresh();
     }
   });
   context.subscriptions.push(cfgWatcher);

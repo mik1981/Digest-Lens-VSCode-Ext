@@ -25,7 +25,7 @@ export type AlgoName =
 
 export interface CRCParams {
   name?: string;
-  width: number;       // 1..512 (in base all'algoritmo)
+  width: number;       // 1..512 bits (in base all'algoritmo)
   poly: bigint;
   init: bigint;
   refIn: boolean;
@@ -34,7 +34,7 @@ export interface CRCParams {
 }
 
 export interface RuleDisplay {
-  badgeLength?: number; // 1..4 (UI tipicamente mostra 1..2)
+  badgeLength?: number; // 1..4 (UI typically shows 1..2)
   uppercase?: boolean;
 }
 
@@ -46,13 +46,13 @@ export interface RuleConfig {
     xorOut: string | number;
   });
   display?: RuleDisplay;
-  initialValue?: string | number; // Valore iniziale (solo CRC/Fletcher)
-  rule_active?: boolean; // Proprietà opzionale per abilitare/disabilitare la regola
+  initialValue?: string | number; // Initial value (CRC/Fletcher only)
+  rule_active?: boolean; // Optional property to enable/disable the rule
 }
 
 export interface CacheConfig {
   enabled: boolean;
-  path: string; // percorso relativo alla workspace root, default: '.vscode/digestlens.json'
+  path: string; // relative path to workspace root, default: '.vscode/digestlens.json'
 }
 
 export interface EffectiveRule {
@@ -61,6 +61,7 @@ export interface EffectiveRule {
   params: CRCParams;
   display: Required<RuleDisplay>;
   isOnSelection?: boolean;            // true quando pattern === 'onselection'
+  isOnClipboard?: boolean;            // true quando pattern === 'onclipboard'
 }
 
 /** Pattern speciale che non corrisponde mai a file reali, usato come placeholder
@@ -98,14 +99,14 @@ export function loadRules(output?: vscode.OutputChannel): EffectiveRule[] {
   const rules: EffectiveRule[] = [];
   const root = vscode.workspace.workspaceFolders?.[0];
   if (!root) {
-    output?.appendLine('[config] Nessun workspace folder, nessuna regola caricata.');
+    output?.appendLine('[config] No workspace folder, no rules loaded.');
     return rules;
   }
 
   for (const item of arr) {
     // Se rule_active è false, salta questa regola
     if (item.rule_active === false) {
-      output?.appendLine(`[config] Regola "${item.pattern}" saltata: rule_active è false.`);
+      output?.appendLine(`[config] Rule "${item.pattern}" skipped: rule_active is false.`);
       continue;
     }
 
@@ -124,7 +125,7 @@ export function loadRules(output?: vscode.OutputChannel): EffectiveRule[] {
       };
     }
     
-    // Se specificato, initialValue si applica solo ad algoritmi CRC/Fletcher.
+    // If specified, initialValue applies only to CRC/Fletcher algorithms.
     if (item.initialValue !== undefined && supportsInitialValue(params)) {
       params.init = toBigIntFlexible(item.initialValue);
     }
@@ -135,15 +136,17 @@ export function loadRules(output?: vscode.OutputChannel): EffectiveRule[] {
     };
 
     const isOnSelection = item.pattern === 'onselection';
+    const isOnClipboard = item.pattern === 'onclipboard';
 
     rules.push({
       patternStr: item.pattern,
-      pattern: isOnSelection
+      pattern: isOnSelection || isOnClipboard
         ? new vscode.RelativePattern(root, ONSELECTION_DUMMY_GLOB)
         : new vscode.RelativePattern(root, item.pattern),
       params,
       display,
-      isOnSelection: isOnSelection || undefined
+      isOnSelection: isOnSelection ? true : undefined,
+      isOnClipboard: isOnClipboard ? true : undefined
     });
   }
 
@@ -170,7 +173,7 @@ export function loadCacheConfig(output?: vscode.OutputChannel): CacheConfig {
   };
   
   if (output) {
-    output.appendLine('[config] Cache configurazione:');
+    output.appendLine('[config] Cache configuration:');
     output.appendLine(`  enabled: ${result.enabled}`);
     output.appendLine(`  path: ${result.path}`);
   }
@@ -194,7 +197,7 @@ export function validateRules(rules: RuleConfig[], cacheConfig: CacheConfig, wor
   const cacheFileRel = vscode.workspace.asRelativePath(cacheFileUri, false);
   
   for (const rule of rules) {
-    // Le regole "onselection" non producono file: nessuna validazione necessaria
+    // "onselection" rules don't generate files: no validation needed
     if (rule.pattern === 'onselection') { continue; }
 
     const isMatch = picomatch.isMatch(cacheFileRel, rule.pattern, {
@@ -203,7 +206,7 @@ export function validateRules(rules: RuleConfig[], cacheConfig: CacheConfig, wor
     });
     
     if (isMatch) {
-      const error = `Regola "${rule.pattern}" include il file di cache "${cacheConfig.path}". Questo potrebbe causare problemi. Si consiglia di escludere il file di cache dalle regole CRC.`;
+      const error = `Rule "${rule.pattern}" matches cache file "${cacheConfig.path}". This may cause issues. Recommended to exclude cache file from CRC rules.`;
       errors.push(error);
       if (output) {
         output.appendLine(`[config] ERRORE: ${error}`);

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5
+- Added `flat' and `treeViewMode` shows all files in a flat list with or without smart folder hierarchy
+- The `treeViewMode` setting updates dynamically when changed in VS Code settings
+- Fix bug in treeview 
+
 ## 0.1.4
 - General stability improvements and dependency updates
 - Reduced system intrusiveness when no rules are present: no cache file or .vscode folder is created if there are no files to checksum.

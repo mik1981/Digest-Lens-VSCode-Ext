@@ -2,7 +2,7 @@
   "name": "digestlens",
   "displayName": "DigestLens - CRC & SHA & Hash Lens – Checksum Viewer",
   "description": "Instantly compute CRC, hashes and checksums in VS Code. Live Explorer badges, SHA, BLAKE3, xxHash, custom CRC.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "convergo-dev",
   "extensionKind": [
     "workspace"
@@ -204,13 +204,13 @@
       "properties": {
         "digestlens.rules": {
           "type": "array",
-          "description": "Regole: associa wildcard a algoritmo di checksum (predefiniti o custom) e opzioni di visualizzazione.",
+          "description":"Rules: associate glob patterns with checksum/hash algorithms (built-in or custom) and display options.",
           "items": {
             "type": "object",
             "properties": {
               "pattern": {
                 "type": "string",
-                "description": "Glob pattern (es. **/*.{bin,hex}) relativo al workspace. Usa il valore speciale \"onselection\" per calcolare il checksum sul testo selezionato in realtime nell'editor (attivato da ≥ 2 caratteri selezionati)."
+                "description":"Glob pattern (e.g. **/*.{bin,hex}) relative to workspace root. Use special value \"onselection\" for live checksum on editor text selection (activated by ≥2 selected chars). Use \"onclipboard\" for clipboard content (polls every 2s)."
               },
               "algorithm": {
                 "anyOf": [
@@ -243,7 +243,7 @@
                     "properties": {
                       "name": {
                         "type": "string",
-                        "description": "Nome opzionale"
+                        "description":"Optional name"
                       },
                       "width": {
                         "type": "number",
@@ -255,14 +255,14 @@
                           "string",
                           "number"
                         ],
-                        "description": "Polinomio (es. 0x1021)"
+                        "description":"Polynomial (e.g. 0x1021)"
                       },
                       "init": {
                         "type": [
                           "string",
                           "number"
                         ],
-                        "description": "Valore iniziale"
+                        "description":"Initial value"
                       },
                       "refIn": {
                         "type": "boolean"
@@ -308,7 +308,7 @@
                   "string",
                   "number"
                 ],
-                "description": "Valore iniziale personalizzato (opzionale) applicato solo ad algoritmi CRC/Fletcher. Se non specificato, viene usato il valore predefinito dell'algoritmo."
+                "description":"Custom initial value (optional) for CRC/Fletcher only. Uses algorithm default if unspecified."
               }
             },
             "required": [
@@ -320,27 +320,34 @@
         },
         "digestlens.cache": {
           "type": "object",
-          "description": "Configurazione della cache locale per i calcoli checksum.",
+          "description":"Local cache configuration for checksum calculations.",
           "properties": {
             "enabled": {
               "type": "boolean",
               "default": true,
-              "description": "Abilita o disabilita la cache locale."
+              "description":"Enable or disable local cache."
             },
             "path": {
               "type": "string",
               "default": ".vscode/digestlens.json",
-              "description": "Percorso relativo alla workspace root per il file di cache."
+              "description":"Path relative to workspace root for cache file."
             }
           },
           "default": {
             "enabled": true,
             "path": ".vscode/digestlens.json"
           }
+        },
+        "digestlens.treeViewMode": {
+          "type": "string",
+          "enum": ["tree", "flat"],
+          "default": "tree",
+          "description":"Tree view mode: 'tree' for hierarchical folders, 'flat' for flat list of all files."
         }
       }
     }
   },
+
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "esbuild ./src/extension.ts --bundle --outfile=./dist/extension.js --external:vscode --platform=node --format=cjs",
